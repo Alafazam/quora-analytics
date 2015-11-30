@@ -1,4 +1,4 @@
-def compute_qindex(answer_stat_list, verbose=False):
+def compute_qindex(answer_stat_list):
   '''
     This function computes the qindex
     Args:
@@ -19,6 +19,9 @@ def compute_qindex(answer_stat_list, verbose=False):
   # If all answers have at least n upvotes where n is number of answers
   return len(answer_stat_list)
 
+def show_qindex(answer_stat_list):
+  print('Your Q-Index is : %d' % compute_qindex(answer_stat_list))
+
 if __name__ == "__main__":
   import argparse
   from parser import *
@@ -32,4 +35,4 @@ if __name__ == "__main__":
   answer_stat_list = parse_all_answers(args.answer_dir, args.verbose)
   if args.verbose:
     print('A total of %d answers parsed.' % len(answer_stat_list))
-  print('Your Q-Index is : %d' % compute_qindex(answer_stat_list))
+  show_qindex(answer_stat_list)
