@@ -1,6 +1,3 @@
-import argparse
-from parser import *
-
 def compute_qindex(answer_stat_list, verbose=False):
   '''
     This function computes the qindex
@@ -23,6 +20,9 @@ def compute_qindex(answer_stat_list, verbose=False):
   return len(answer_stat_list)
 
 if __name__ == "__main__":
+  import argparse
+  from parser import *
+
   parser = argparse.ArgumentParser(description = 'Compute your Q-Index')
   parser.add_argument('answer_dir', nargs='?', default='quora-answers',
                       help='The path of directory with all stored answers')
