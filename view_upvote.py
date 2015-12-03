@@ -53,17 +53,17 @@ def show_vu_stats(answer_stat_list, depth=10):
   avg_of_vu_ratio = float(total_of_vu_ratio) / len(answer_stat_list)
   print('Average of (Views / Upvotes) of each answer = %.2f' % avg_of_vu_ratio)
 
-  vu_filtered_list = filter(lambda x: x[3] > 0, answer_stat_list)
+  vu_filtered_list = filter(lambda x: x[-1] > 0, answer_stat_list)
   depth = min(depth, len(vu_filtered_list))
 
   if depth > 0:
     # Sort answers according to views in descending order
-    vu_filtered_list.sort(key=lambda x: x[3])
+    vu_filtered_list.sort(key=lambda x: x[-1])
     print('Top %d answers with minimum (Views / Upvotes Ratio Are) : ' % depth)
     for i in range(depth):
       print('%d. %s with (Views(%d)/ Upvotes(%d) = %.2f)' % (
             i + 1, vu_filtered_list[i][2], vu_filtered_list[i][0],
-            vu_filtered_list[i][1], vu_filtered_list[i][3])
+            vu_filtered_list[i][1], vu_filtered_list[i][-1])
       )
 
 if __name__ == "__main__":

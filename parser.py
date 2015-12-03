@@ -4,12 +4,25 @@ import glob, sys, os
 VIEW_ROW_CLASS = 'AnswerViewsStatsRow'
 UPVOTE_ROW_CLASS = 'AnswerUpvotesStatsRow'
 QUESTION_LINK_CLASS = 'view_other_answers_link'
+ANSWER_CONTENT_SELECTOR = '.ExpandedQText.ExpandedAnswer'
+ANSWER_FOOTER_SELECTOR = '.ContentFooter.AnswerFooter'
 
-def get_answer_stats(filename):
+def get_answer_content(doc):
+  answer = doc.select(ANSWER_CONTENT_CLASS)[0]
+  # We want only text content. So remove codes if any
+  answer.code.decompose()
+  answer.select(ANSWER_FOOTER_SELECTOR)[0].decompose()
+  answer_text = answer.getText(separator=u' ').replace('.', ' ')
+  word_list = re.sub('\s+', ' ', answer_text).split()
+  filtered_word_list = []
+  for word in word_list:
+    word.translate()
+
+def parse_answer(filename):
   '''
     This function will parse all the statistics of a particular answer
     Args:
-      filename - the full path of the downloaded answer file
+      filename - the path of the downloaded answer file
     Returns:
       A list of 3 elements - views, upvotes, question_link
   '''
@@ -35,8 +48,8 @@ def parse_all_answers(directory, verbose=False):
   '''
     This function parses statistics for all the downloaded answers
     Args:
-      directory - The full or relative path of the directory containing all the
-                  downloaded answers
+      directory - The path of the directory containing all the downloaded
+                  answers
     Returns:
       A list of list with each inner list representing statistic of an answer
   '''
@@ -50,7 +63,7 @@ def parse_all_answers(directory, verbose=False):
   for filename in file_list:
     # Processing the answer in filename
     try:
-      answer_stat_list.append(get_answer_stats(filename))
+      answer_stat_list.append(parse_answer(filename))
       answers_parsed += 1
       if verbose:
         sys.stdout.write('\rNumber of Files Parsed = %d' % answers_parsed)
