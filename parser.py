@@ -1,22 +1,35 @@
 from bs4 import BeautifulSoup
-import glob, sys, os
+import glob, sys, os, string
 
+# Global constants for classes because this may change in future
 VIEW_ROW_CLASS = 'AnswerViewsStatsRow'
 UPVOTE_ROW_CLASS = 'AnswerUpvotesStatsRow'
 QUESTION_LINK_CLASS = 'view_other_answers_link'
 ANSWER_CONTENT_SELECTOR = '.ExpandedQText.ExpandedAnswer'
 ANSWER_FOOTER_SELECTOR = '.ContentFooter.AnswerFooter'
 
-def get_answer_content(doc):
+def get_word_list(doc):
+  '''
+    This function will parse the text content of an answer and return the answer
+    in form of a list of words
+    Args:
+      doc = BeautifulSoup Document
+    Return:
+      A list of words in the answer
+  '''
   answer = doc.select(ANSWER_CONTENT_CLASS)[0]
   # We want only text content. So remove codes if any
   answer.code.decompose()
+
+  # Remove the Answer Footer
   answer.select(ANSWER_FOOTER_SELECTOR)[0].decompose()
+
+  # Parse the text content and separate each tag with space. Filter out spaces
   answer_text = answer.getText(separator=u' ').replace('.', ' ')
-  word_list = re.sub('\s+', ' ', answer_text).split()
-  filtered_word_list = []
-  for word in word_list:
-    word.translate()
+  wlist = re.sub('\s+', ' ', answer_text).split()
+
+  # Filtering all the words with only punctuations since those are not words
+  return filter(lambda x: len(x.translate(None, string.punctuation)) > 0, wlist)
 
 def parse_answer(filename):
   '''
@@ -30,19 +43,25 @@ def parse_answer(filename):
   doc = BeautifulSoup(fp.read(), 'html.parser')
   fp.close()
 
+  parsed_answer = []
+
   # Parsing the View Count
   view_str = doc.find_all(class_=VIEW_ROW_CLASS)[0].strong.string
-  views = int(view_str.replace(',', ''))
+  parsed_answer.append(int(view_str.replace(',', '')))
 
   # Parsing the Upvotes Count
   upvote_str = doc.find_all(class_=UPVOTE_ROW_CLASS)[0].strong.string
-  upvotes = int(upvote_str.replace(',', ''))
+  parsed_answer.append(int(upvote_str.replace(',', '')))
 
   # Parsing the Question Link
   question_link = 'https://www.quora.com' + doc.find_all(
     class_=QUESTION_LINK_CLASS)[0].a.get('href')
+  parsed_answer.append(question_link)
 
-  return [views, upvotes, question_link]
+  # Parsing Answer content in form of word list
+  parsed_answer.append(get_word_list(doc))
+
+  return parsed_answer
 
 def parse_all_answers(directory, verbose=False):
   '''
