@@ -67,14 +67,15 @@ def parse_quora_date(quora_str):
 
 class QuoraCrawler(object):
   def __init__(self, answer_list_file_path='answers.json'):
-    self.driver = driver = webdriver.Chrome()
+    self.driver = driver = webdriver.PhantomJS(service_args=['--remote-debugger-port=9000'])
+    driver.set_window_size(1120, 550)
     if os.path.isfile(answer_list_file_path):
       with open(answer_list_file_path, 'r') as answer_file:
         self.answer_list = json.load(answer_file)
     else:
         self.answer_list = []
 
-  def write_answer_file(self, filepath='answer.json'):
+  def write_answer_file(self, filepath='answers.json'):
     with open(filepath, 'w') as answer_file:
       json.dump(self.answer_list, answer_file)
 
@@ -89,6 +90,7 @@ class QuoraCrawler(object):
       LOGIN_FORM_SELECTOR + ' input[type=password]')
     email_input.send_keys(email)
     password_input.send_keys(password + Keys.RETURN)
+    print "Successfully Logged In"
 
   def scroll_page(self):
     # Executing JavaScript function to scroll page
@@ -98,47 +100,48 @@ class QuoraCrawler(object):
 
   @property
   def no_of_answers(self):
-    print "script = ", """
-      return $('%s').length;
-    """ % CONTENT_PAGE_ITEM_SELECTOR
     return self.driver.execute_script("""
       return $('%s').length;
     """ % CONTENT_PAGE_ITEM_SELECTOR)
 
   def update_answer_list(self):
     self.driver.get('https://www.quora.com/content?content_types=answers')
+    print "Sleeping"
+    time.sleep(5)
     print self.driver.title
 
-    # Getting the current number of answers
-    old_len = 0
-    new_len = self.no_of_answers
-    flag_old_answer = True
-    print "Old = %d new = %d " % (old_len, new_len)
-    while new_len > old_len and flag_old_answer:
+    # Just Asserting that we got the right page
+    assert 'Your Content - Quora' in self.driver.title
+
+    new_answer_exist = True
+    new_answer_list = []
+    while new_answer_exist:
       self.scroll_page() # Scrolling the page to load more answers
       time.sleep(JS_SCROLL_TIMEOUT) # Sleeping while the page loads more answers
-      print "WHile"
+
       # Parsing the answers fetched
       elements = self.driver.find_elements_by_css_selector(CONTENT_PAGE_ITEM_SELECTOR);
-      new_answer_list = []
+
+      # Iterating over only new elements fetched in this cycle
+      elements = elements[len(new_answer_list)]
       for element in elements:
         link = element.find_element_by_tag_name('a').get_attribute('href')
         if len(self.answer_list) > 0 and link == self.answer_list[0][0]:
-          # The remaining answer links are already available
+          # The remaining answer links are already available in answer_list
           new_answer_list.extend(self.answer_list)
-          flag_old_answer = False
+          new_answer_exist = False
           break
         else:
           time_text = element.find_element_by_class_name('metadata').get_attribute('innerHTML')
           print 'time att= ', element.find_element_by_class_name('metadata').get_attribute('innerHTML')
-          print 'time text= ', element.find_element_by_class_name('metadata').text
           new_answer_list.append([link, parse_quora_date(time_text)])
 
-      old_len = new_len
-      new_len = self.no_of_answers
-    self.answer_list = new_answer_list
+      if len(elements) == 0:
+        # If no new item answer was fetched in this cycle
+        new_answer_exist = False
 
     # Writing the updated answer list to file
+    self.answer_list = new_answer_list
     self.write_answer_file()
 
   def download_answers(self, directory='quora-answers', update_answer=True,
@@ -191,7 +194,15 @@ class QuoraCrawler(object):
 
         time.sleep(delay)
 
+  def quit(self):
+    self.driver.quit()
+
 rc = QuoraCrawler()
-rc.login(os.environ['QUORA_USERNAME'], os.environ['QUORA_PASSWORD'])
-answer_list = rc.download_answers()
+try:
+  rc.login(os.environ['QUORA_USERNAME'], os.environ['QUORA_PASSWORD'])
+  answer_list = rc.download_answers()
+except AssertionError:
+  print "Some problem fetching the right content"
+except Exception as e:
+  raise e
 print answer_list
