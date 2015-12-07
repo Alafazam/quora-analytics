@@ -105,6 +105,7 @@ class QuoraCrawler(object):
     """ % CONTENT_PAGE_ITEM_SELECTOR)
 
   def update_answer_list(self):
+    time.sleep(3)
     self.driver.get('https://www.quora.com/content?content_types=answers')
     print "Sleeping"
     time.sleep(5)
@@ -204,5 +205,7 @@ try:
 except AssertionError:
   print "Some problem fetching the right content"
 except Exception as e:
+  rc.quit()
+  print e
   raise e
-print answer_list
+rc.quit()
