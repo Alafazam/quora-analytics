@@ -81,6 +81,7 @@ class QuoraCrawler(object):
 
   def login(self, email, password):
     self.driver.get('https://www.quora.com/')
+    print "Trying to log in"
     # Just asserting that we got the right page
     assert 'Quora' in self.driver.title
 
@@ -90,6 +91,9 @@ class QuoraCrawler(object):
       LOGIN_FORM_SELECTOR + ' input[type=password]')
     email_input.send_keys(email)
     password_input.send_keys(password + Keys.RETURN)
+
+    # Asserting that we are at Home
+    assert 'Home' in self.driver.title
     print "Successfully Logged In"
 
   def scroll_page(self):
