@@ -67,7 +67,7 @@ def parse_quora_date(quora_str):
 
 class QuoraCrawler(object):
   def __init__(self, answer_list_file_path='answers.json'):
-    self.driver = driver = webdriver.PhantomJS(service_args=['--remote-debugger-port=9000'])
+    self.driver = driver = webdriver.PhantomJS(service_args=['--remote-debugger-port=9000', '--ssl-protocol=any'])
     driver.set_window_size(1120, 550)
     if os.path.isfile(answer_list_file_path):
       with open(answer_list_file_path, 'r') as answer_file:
@@ -80,6 +80,7 @@ class QuoraCrawler(object):
       json.dump(self.answer_list, answer_file)
 
   def login(self, email, password):
+    print "Opening Quora"
     self.driver.get('https://www.quora.com/')
     print "Trying to log in"
     # Just asserting that we got the right page
