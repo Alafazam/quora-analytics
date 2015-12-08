@@ -58,3 +58,10 @@ target/
 
 # Answer Folder
 quora-answers/*
+
+# User Data
+user-data/*
+*.dat
+
+# Virtual Env
+.env/*

@@ -1,8 +1,12 @@
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
-import json, time, os, re, urllib2, errno
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException as STException
+import pickle, time, os, re, urllib2, errno
 
 LOGIN_FORM_SELECTOR = '.inline_login_form'
+ERROR_MSG_SELECTOR = '.input_validation_error_text[style*="display: block"]'
 CONTENT_PAGE_ITEM_SELECTOR = '.UserContentList .pagedlist_item'
 # Adjust this if your Internet connection is slow. It is used to scroll answers
 JS_SCROLL_TIMEOUT = 2 # In seconds
@@ -66,26 +70,87 @@ def parse_quora_date(quora_str):
   return '%d-%02d-%02d' % (tm.tm_year, tm.tm_mon, tm.tm_mday)
 
 class QuoraCrawler(object):
-  def __init__(self, answer_list_file_path='answers.json'):
-    self.driver = driver = webdriver.PhantomJS(service_args=['--remote-debugger-port=9000', '--ssl-protocol=any'])
-    driver.set_window_size(1120, 550)
-    if os.path.isfile(answer_list_file_path):
-      with open(answer_list_file_path, 'r') as answer_file:
-        self.answer_list = json.load(answer_file)
-    else:
-        self.answer_list = []
 
-  def write_answer_file(self, filepath='answers.json'):
-    with open(filepath, 'w') as answer_file:
-      json.dump(self.answer_list, answer_file)
+  PHANTOMJS_DRIVER = 0
+  CHROME_DRIVER = 1
+
+  class InvalidCredentialException(Exception):
+    pass
+
+  def __init__(self, answer_list_file_path='answers.dat',
+    cookie_path='user-data/phantomja/phantom-cookie'):
+    self.answer_list = None
+    self.answer_file_path = answer_list_file_path
+    self.cookie_file_path = cookie_path
+    if os.path.isfile(answer_list_file_path):
+      try:
+        with open(answer_list_file_path, 'rb') as answer_file:
+          self.answer_list = pickle.load(answer_file)
+      except (ValueError, pickle.UnpicklingError, AttributeError, EOFError,
+              IndexError):
+        print "Value Error"
+        self.answer_list = []
+    if not self.validate_answer_list():
+      print "ANswer List Found Invalid"
+      raise Exception('Wrong')
+      self.answer_list = []
+
+  def initialize_webdriver(self, driver_type=PHANTOMJS_DRIVER,
+    user_dir='user-data/chrome-user-data'):
+    if driver_type == self.PHANTOMJS_DRIVER:
+      self.driver = webdriver.PhantomJS(
+        service_args=['--remote-debugger-port=9000',
+                      '--ssl-protocol=any',
+                      '--cookies-file=' + self.cookie_file_path])
+    elif driver_type == self.CHROME_DRIVER:
+      co = webdriver.ChromeOptions()
+      co.add_argument("--user-data-dir=" + user_dir)
+      self.driver = webdriver.Chrome(chrome_options=co)
+
+    # Setting Driver Window Size.
+    self.driver.set_window_size(1120, 550)
+
+  def reset_answer_list(self):
+    self.answer_list = []
+    self.write_answer_file()
+
+  def validate_answer_list(self):
+    if self.answer_list is None or type(self.answer_list) != list: return False
+    for e in self.answer_list:
+      if type(e) != list or len(e) != 3:
+        return False
+      for item in e:
+        if type(item) not in (str, unicode): return False
+    return True
+
+  def write_answer_file(self):
+    with open(self.answer_file_path, 'wb') as answer_file:
+      pickle.dump(self.answer_list, answer_file)
+
+  def _is_new_answer(self, old_ans_length):
+    '''
+      This function returns True if any new answer is available on page or if no
+      more new answers can fetched - i.e., are we done scrolling ?
+    '''
+    elements = self.driver.find_elements_by_css_selector(
+      CONTENT_PAGE_ITEM_SELECTOR)
+    len_new = len(elements[old_ans_length:])
+    # If no more items remaining to fetch
+    len_hidden = len(self.driver.find_elements_by_class_name('pagedlist_hidden'))
+    return len_new > 0 or len_hidden == 0
 
   def login(self, email, password):
     print "Opening Quora"
     self.driver.get('https://www.quora.com/')
-    print "Trying to log in"
-    # Just asserting that we got the right page
-    assert 'Quora' in self.driver.title
+    WebDriverWait(self.driver, 10).until(EC.title_contains('Quora'))
 
+    if 'Home - Quora' in self.driver.title:
+      # We already Had Login Cookies. Need not login again
+      print "Already Authenticated By Cookie"
+      return
+
+    print "Trying to log in"
+    # We have to login with email and password
     email_input = self.driver.find_element_by_css_selector(
       LOGIN_FORM_SELECTOR + ' input[type=text]')
     password_input = self.driver.find_element_by_css_selector(
@@ -93,9 +158,14 @@ class QuoraCrawler(object):
     email_input.send_keys(email)
     password_input.send_keys(password + Keys.RETURN)
 
-    # Asserting that we are at Home
-    assert 'Home' in self.driver.title
-    print "Successfully Logged In"
+    WebDriverWait(self.driver, 10).until(lambda driver:
+      EC.title_contains('Home - Quora')(driver) or len(
+        driver.find_elements_by_css_selector(ERROR_MSG_SELECTOR)) > 0)
+
+    if 'Home - Quora' not in self.driver.title:
+      raise self.InvalidCredentialException('Invalid Login Credentials')
+    else:
+      print "Successfully Logged In"
 
   def scroll_page(self):
     # Executing JavaScript function to scroll page
@@ -110,26 +180,23 @@ class QuoraCrawler(object):
     """ % CONTENT_PAGE_ITEM_SELECTOR)
 
   def update_answer_list(self):
-    time.sleep(3)
     self.driver.get('https://www.quora.com/content?content_types=answers')
-    print "Sleeping"
-    time.sleep(5)
-    print self.driver.title
-
-    # Just Asserting that we got the right page
-    assert 'Your Content - Quora' in self.driver.title
-
+    WebDriverWait(self.driver, 10).until(
+      EC.title_contains('Your Content - Quora')
+    )
+    print "No of Existing Answers = ", len(self.answer_list)
     new_answer_exist = True
     new_answer_list = []
     while new_answer_exist:
       self.scroll_page() # Scrolling the page to load more answers
-      time.sleep(JS_SCROLL_TIMEOUT) # Sleeping while the page loads more answers
+      WebDriverWait(self.driver, 10).until(lambda x: self._is_new_answer(
+        len(new_answer_list)))
 
       # Parsing the answers fetched
       elements = self.driver.find_elements_by_css_selector(CONTENT_PAGE_ITEM_SELECTOR);
 
       # Iterating over only new elements fetched in this cycle
-      elements = elements[len(new_answer_list)]
+      elements = elements[len(new_answer_list):]
       for element in elements:
         link = element.find_element_by_tag_name('a').get_attribute('href')
         if len(self.answer_list) > 0 and link == self.answer_list[0][0]:
@@ -138,9 +205,10 @@ class QuoraCrawler(object):
           new_answer_exist = False
           break
         else:
+          ques = element.find_element_by_class_name('rendered_qtext').text
           time_text = element.find_element_by_class_name('metadata').get_attribute('innerHTML')
           print 'time att= ', element.find_element_by_class_name('metadata').get_attribute('innerHTML')
-          new_answer_list.append([link, parse_quora_date(time_text)])
+          new_answer_list.append([link, parse_quora_date(time_text), ques])
 
       if len(elements) == 0:
         # If no new item answer was fetched in this cycle
@@ -150,8 +218,8 @@ class QuoraCrawler(object):
     self.answer_list = new_answer_list
     self.write_answer_file()
 
-  def download_answers(self, directory='quora-answers', update_answer=True,
-                      overwrite=False, delay=0):
+  def download_answers(self, directory='quora-answers',
+    update_answer=True, overwrite=False, delay=0):
     # Update answer List if required
     if update_answer:
       self.update_answer_list()
@@ -203,14 +271,9 @@ class QuoraCrawler(object):
   def quit(self):
     self.driver.quit()
 
-rc = QuoraCrawler()
-try:
+if __name__ == '__main__':
+  rc = QuoraCrawler()
+  rc.initialize_webdriver(QuoraCrawler.CHROME_DRIVER)
   rc.login(os.environ['QUORA_USERNAME'], os.environ['QUORA_PASSWORD'])
   answer_list = rc.download_answers()
-except AssertionError:
-  print "Some problem fetching the right content"
-except Exception as e:
   rc.quit()
-  print e
-  raise e
-rc.quit()
