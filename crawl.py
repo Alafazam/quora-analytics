@@ -8,6 +8,11 @@ import pickle, time, os, re, urllib2, errno
 LOGIN_FORM_SELECTOR = '.inline_login_form'
 ERROR_MSG_SELECTOR = '.input_validation_error_text[style*="display: block"]'
 CONTENT_PAGE_ITEM_SELECTOR = '.UserContentList .pagedlist_item'
+QUORA_TITLE = 'Quora - The best answer to any question'
+HOME_TITLE = 'Quora - Home'
+CONTENT_TILE = 'Your Content - Quora'
+CONTENT_URL = 'https://www.quora.com/content?content_types=answers'
+PROFILE_IMG_SELECTOR = '.nav_item_link .expanded .profile_photo_img'
 # Adjust this if your Internet connection is slow. It is used to scroll answers
 JS_SCROLL_TIMEOUT = 2 # In seconds
 
@@ -78,10 +83,13 @@ class QuoraCrawler(object):
     pass
 
   def __init__(self, answer_list_file_path='answers.dat',
-    cookie_path='user-data/phantomja/phantom-cookie'):
+    cookie_path='user-data/phantomja/phantom-cookie',
+    driver_type=PHANTOMJS_DRIVER,
+    user_dir='user-data/chrome-user-data'):
     self.answer_list = None
     self.answer_file_path = answer_list_file_path
-    self.cookie_file_path = cookie_path
+
+    # Setting Answer List by reading from file
     if os.path.isfile(answer_list_file_path):
       try:
         with open(answer_list_file_path, 'rb') as answer_file:
@@ -90,24 +98,20 @@ class QuoraCrawler(object):
               IndexError):
         print "Value Error"
         self.answer_list = []
-    if not self.validate_answer_list():
-      print "ANswer List Found Invalid"
-      raise Exception('Wrong')
-      self.answer_list = []
+    if not self.validate_answer_list(): self.answer_list = []
 
-  def initialize_webdriver(self, driver_type=PHANTOMJS_DRIVER,
-    user_dir='user-data/chrome-user-data'):
+    # Initializing Driver
     if driver_type == self.PHANTOMJS_DRIVER:
       self.driver = webdriver.PhantomJS(
         service_args=['--remote-debugger-port=9000',
                       '--ssl-protocol=any',
-                      '--cookies-file=' + self.cookie_file_path])
+                      '--cookies-file=' + cookie_path])
     elif driver_type == self.CHROME_DRIVER:
       co = webdriver.ChromeOptions()
       co.add_argument("--user-data-dir=" + user_dir)
       self.driver = webdriver.Chrome(chrome_options=co)
 
-    # Setting Driver Window Size.
+    # Setting Driver Window Size - Known Hack for a Bug.
     self.driver.set_window_size(1120, 550)
 
   def reset_answer_list(self):
@@ -136,20 +140,39 @@ class QuoraCrawler(object):
       CONTENT_PAGE_ITEM_SELECTOR)
     len_new = len(elements[old_ans_length:])
     # If no more items remaining to fetch
-    len_hidden = len(self.driver.find_elements_by_class_name('pagedlist_hidden'))
+    len_hidden = len(self.driver.find_elements_by_class_name(
+      'pagedlist_hidden'))
     return len_new > 0 or len_hidden == 0
 
-  def login(self, email, password):
+  def logout(self):
+    print "Logging Out"
+    if 'Quora' not in self.driver.title:
+      self.driver.get('https://www.quora.com/')
+      WebDriverWait(self.driver, 10).until(EC.title_contains('Quora'))
+    if QUORA_TITLE not in self.driver.title:
+      self.driver.find_element_by_css_selector(
+        "form[id$='_logout_form']").submit()
+      WebDriverWait(self.driver, 10).until(EC.title_contains(QUORA_TITLE))
+
+  def check_login(self):
     print "Opening Quora"
-    self.driver.get('https://www.quora.com/')
-    WebDriverWait(self.driver, 10).until(EC.title_contains('Quora'))
+    if 'Quora' not in self.driver.title:
+      self.driver.get('https://www.quora.com/')
+      WebDriverWait(self.driver, 10).until(EC.title_contains('Quora'))
+    return QUORA_TITLE not in self.driver.title
 
-    if 'Home - Quora' in self.driver.title:
-      # We already Had Login Cookies. Need not login again
-      print "Already Authenticated By Cookie"
+  def get_user_name(self):
+    assert self.check_login()
+    return self.driver.find_element_by_css_selector(
+      PROFILE_IMG_SELECTOR).get_attribute('alt')
+
+  def login(self, email, password):
+    if self.check_login():
       return
-
     print "Trying to log in"
+    # Make Sure we are on Login Page
+    assert QUORA_TITLE in self.driver.title
+
     # We have to login with email and password
     email_input = self.driver.find_element_by_css_selector(
       LOGIN_FORM_SELECTOR + ' input[type=text]')
@@ -180,11 +203,11 @@ class QuoraCrawler(object):
     """ % CONTENT_PAGE_ITEM_SELECTOR)
 
   def update_answer_list(self):
-    self.driver.get('https://www.quora.com/content?content_types=answers')
-    WebDriverWait(self.driver, 10).until(
-      EC.title_contains('Your Content - Quora')
-    )
-    print "No of Existing Answers = ", len(self.answer_list)
+    if CONTENT_TILE not in self.driver.title:
+      # Navigate to Content Page
+      self.driver.get(CONTENT_URL)
+      WebDriverWait(self.driver, 10).until(EC.title_contains(CONTENT_TILE))
+
     new_answer_exist = True
     new_answer_list = []
     while new_answer_exist:
@@ -193,7 +216,8 @@ class QuoraCrawler(object):
         len(new_answer_list)))
 
       # Parsing the answers fetched
-      elements = self.driver.find_elements_by_css_selector(CONTENT_PAGE_ITEM_SELECTOR);
+      elements = self.driver.find_elements_by_css_selector(
+        CONTENT_PAGE_ITEM_SELECTOR);
 
       # Iterating over only new elements fetched in this cycle
       elements = elements[len(new_answer_list):]
@@ -206,8 +230,8 @@ class QuoraCrawler(object):
           break
         else:
           ques = element.find_element_by_class_name('rendered_qtext').text
-          time_text = element.find_element_by_class_name('metadata').get_attribute('innerHTML')
-          print 'time att= ', element.find_element_by_class_name('metadata').get_attribute('innerHTML')
+          time_text = element.find_element_by_class_name(
+            'metadata').get_attribute('innerHTML')
           new_answer_list.append([link, parse_quora_date(time_text), ques])
 
       if len(elements) == 0:
@@ -272,8 +296,7 @@ class QuoraCrawler(object):
     self.driver.quit()
 
 if __name__ == '__main__':
-  rc = QuoraCrawler()
-  rc.initialize_webdriver(QuoraCrawler.CHROME_DRIVER)
+  rc = QuoraCrawler(driver_type=QuoraCrawler.CHROME_DRIVER)
   rc.login(os.environ['QUORA_USERNAME'], os.environ['QUORA_PASSWORD'])
   answer_list = rc.download_answers()
   rc.quit()
