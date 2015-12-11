@@ -26,7 +26,6 @@ def parse_quora_date(quora_str):
   days_of_week = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
   months_of_year = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
   _, _, date_str = quora_str.partition('Added ')
-  print quora_str.partition('Added ')
   date_str = date_str.strip()
   if date_str == '':
     raise ValueError('"%s" does not appear to indicate when answer was added' % quora_str)
@@ -84,7 +83,7 @@ class QuoraCrawler(object):
 
   def __init__(self, answer_list_file_path='answers.dat',
     cookie_path='user-data/phantomja/phantom-cookie',
-    driver_type=PHANTOMJS_DRIVER,
+    driver=PHANTOMJS_DRIVER,
     user_dir='user-data/chrome-user-data'):
     self.answer_list = None
     self.answer_file_path = answer_list_file_path
@@ -101,12 +100,12 @@ class QuoraCrawler(object):
     if not self.validate_answer_list(): self.answer_list = []
 
     # Initializing Driver
-    if driver_type == self.PHANTOMJS_DRIVER:
+    if driver == self.PHANTOMJS_DRIVER:
       self.driver = webdriver.PhantomJS(
         service_args=['--remote-debugger-port=9000',
                       '--ssl-protocol=any',
                       '--cookies-file=' + cookie_path])
-    elif driver_type == self.CHROME_DRIVER:
+    elif driver == self.CHROME_DRIVER:
       co = webdriver.ChromeOptions()
       co.add_argument("--user-data-dir=" + user_dir)
       self.driver = webdriver.Chrome(chrome_options=co)
@@ -138,27 +137,51 @@ class QuoraCrawler(object):
     '''
     elements = self.driver.find_elements_by_css_selector(
       CONTENT_PAGE_ITEM_SELECTOR)
-    len_new = len(elements[old_ans_length:])
-    # If no more items remaining to fetch
-    len_hidden = len(self.driver.find_elements_by_class_name(
-      'pagedlist_hidden'))
-    return len_new > 0 or len_hidden == 0
 
-  def logout(self):
-    print "Logging Out"
+    len_new = len(elements[old_ans_length:])
+    if len_new > 0:
+      return True
+    spinner_display = self.driver.find_element_by_css_selector(
+      '.pager_next[id$="loading"]').value_of_css_property('display')
+    if spinner_display != 'none':
+      return False
+
+    len_hidden = len(self.driver.find_elements_by_css_selector(
+      '.pagedlist_item[style*="display: none"]'))
+    if len_hidden == 0:
+      len_hidden = len(self.driver.find_elements_by_class_name(
+        'pagelist_hidden'))
+    return len_hidden == 0
+
+  def logout(self, prog=None, status=None):
     if 'Quora' not in self.driver.title:
+      if prog: prog['value'] = 10
+      if status: status.set('Opening Quora')
       self.driver.get('https://www.quora.com/')
       WebDriverWait(self.driver, 10).until(EC.title_contains('Quora'))
+      if prog: prog['value'] = 90
+      if status: status.set('Opened Quora')
+
     if QUORA_TITLE not in self.driver.title:
+      if prog: prog['value'] = 10
+      if status: status.set('Logging Out')
       self.driver.find_element_by_css_selector(
         "form[id$='_logout_form']").submit()
       WebDriverWait(self.driver, 10).until(EC.title_contains(QUORA_TITLE))
+      if prog: prog['value'] = 90
+      if status: status.set('Log Out Successful')
 
-  def check_login(self):
-    print "Opening Quora"
+  def check_login(self, prog=None, status=None):
+    if prog: prog['value'] = 10
     if 'Quora' not in self.driver.title:
+      if status: status.set('Opening Quora')
       self.driver.get('https://www.quora.com/')
       WebDriverWait(self.driver, 10).until(EC.title_contains('Quora'))
+      if status: status.set('Opened Quora')
+      if prog: prog['value'] = 100
+    else:
+      if status: status.set('Quora Already Open')
+      if prog: prog['value'] = 100
     return QUORA_TITLE not in self.driver.title
 
   def get_user_name(self):
@@ -166,28 +189,48 @@ class QuoraCrawler(object):
     return self.driver.find_element_by_css_selector(
       PROFILE_IMG_SELECTOR).get_attribute('alt')
 
-  def login(self, email, password):
-    if self.check_login():
+  def login(self, email, password, prog=None, status=None):
+    if self.check_login(prog, status):
       return
-    print "Trying to log in"
     # Make Sure we are on Login Page
     assert QUORA_TITLE in self.driver.title
+
+    # First move to primary login form
+    login_link = self.driver.find_element_by_class_name('login_link')
+    if login_link.is_displayed() and login_link.is_enabled():
+      login_link.click()
 
     # We have to login with email and password
     email_input = self.driver.find_element_by_css_selector(
       LOGIN_FORM_SELECTOR + ' input[type=text]')
     password_input = self.driver.find_element_by_css_selector(
       LOGIN_FORM_SELECTOR + ' input[type=password]')
+
+    assert email_input.is_displayed() and email_input.is_enabled()
+    assert password_input.is_displayed() and password_input.is_enabled()
+
+    email_input.clear()
+    password_input.clear()
     email_input.send_keys(email)
     password_input.send_keys(password + Keys.RETURN)
+
+    if status: status.set('Waiting for Quora Response')
+    if prog: prog['value'] = 20
 
     WebDriverWait(self.driver, 10).until(lambda driver:
       EC.title_contains('Home - Quora')(driver) or len(
         driver.find_elements_by_css_selector(ERROR_MSG_SELECTOR)) > 0)
 
+    if status: status.set('Quora Response Received')
+    if prog: prog['value'] = 50
+
     if 'Home - Quora' not in self.driver.title:
+      if status: status.set('Invalid Credentials. Try Again')
+      if prog: prog['value'] = 100
       raise self.InvalidCredentialException('Invalid Login Credentials')
     else:
+      if status: status.set('Login Successful')
+      if prog: prog['value'] = 100
       print "Successfully Logged In"
 
   def scroll_page(self):
@@ -202,22 +245,39 @@ class QuoraCrawler(object):
       return $('%s').length;
     """ % CONTENT_PAGE_ITEM_SELECTOR)
 
-  def update_answer_list(self):
+  def update_answer_list(self, prog=None, status=None):
     if CONTENT_TILE not in self.driver.title:
       # Navigate to Content Page
+      if prog: prog['value'] = 10
+      if status: status.set('Fetching Content Page...')
       self.driver.get(CONTENT_URL)
       WebDriverWait(self.driver, 10).until(EC.title_contains(CONTENT_TILE))
+
+    if prog: prog['value'] = 0
+    if status: status.set('Parsing Content Page...')
 
     new_answer_exist = True
     new_answer_list = []
     while new_answer_exist:
+      time.sleep(2)
       self.scroll_page() # Scrolling the page to load more answers
-      WebDriverWait(self.driver, 10).until(lambda x: self._is_new_answer(
-        len(new_answer_list)))
-
+      try:
+        WebDriverWait(self.driver, 20).until(
+          lambda x: len(x.find_elements_by_css_selector(
+            CONTENT_PAGE_ITEM_SELECTOR)[len(new_answer_list):]) > 0)
+      except STException:
+        print "Exception Received"
+        self.scroll_page() # Scrolling the page to load more answers
+        time.sleep(2)
+        pass
+      print "Page Scrolling Successful"
       # Parsing the answers fetched
       elements = self.driver.find_elements_by_css_selector(
         CONTENT_PAGE_ITEM_SELECTOR);
+
+      if status: status.set('Fetched ' + str(len(elements)) + ' answers')
+      if prog and prog['value'] > 90 : prog['value'] = 40
+      print 'Fetched ' + str(len(elements)) + ' answers'
 
       # Iterating over only new elements fetched in this cycle
       elements = elements[len(new_answer_list):]
@@ -236,11 +296,17 @@ class QuoraCrawler(object):
 
       if len(elements) == 0:
         # If no new item answer was fetched in this cycle
+        print "No More Answers to fetch"
         new_answer_exist = False
 
+    if status: status.set('Writing Answer File')
+    if prog: prog['value'] = 85
     # Writing the updated answer list to file
     self.answer_list = new_answer_list
     self.write_answer_file()
+
+    if status: status.set('Answer List Updated')
+    if prog: prog['value'] = 95
 
   def download_answers(self, directory='quora-answers',
     update_answer=True, overwrite=False, delay=0):
@@ -296,7 +362,7 @@ class QuoraCrawler(object):
     self.driver.quit()
 
 if __name__ == '__main__':
-  rc = QuoraCrawler(driver_type=QuoraCrawler.CHROME_DRIVER)
+  rc = QuoraCrawler(driver=QuoraCrawler.CHROME_DRIVER)
   rc.login(os.environ['QUORA_USERNAME'], os.environ['QUORA_PASSWORD'])
   answer_list = rc.download_answers()
   rc.quit()
