@@ -4,6 +4,7 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException as STException
 import pickle, time, os, re, urllib2, errno
+import pdfkit
 
 LOGIN_FORM_SELECTOR = '.inline_login_form'
 ERROR_MSG_SELECTOR = '.input_validation_error_text[style*="display: block"]'
@@ -77,6 +78,8 @@ class QuoraCrawler(object):
 
   PHANTOMJS_DRIVER = 0
   CHROME_DRIVER = 1
+  SAVE_AS_HTML= 0
+  SAVE_AS_PDF= 1
 
   class InvalidCredentialException(Exception):
     pass
@@ -346,9 +349,7 @@ class QuoraCrawler(object):
       if overwrite or not os.path.isfile(filename):
         # Fetch the URL to find the answer
         try:
-          page_html = urllib2.urlopen(e[0]).read()
-          with open(filename, 'wb') as f:
-            f.write(page_html)
+          self.save_answer(e[0], filename, save_as=SAVE_AS_HTML)
           download_file_count += 1
         except urllib2.URLError as error:
           print '[ERROR] Failed to download answer from URL %s (%s)' % (url, error.reason)
@@ -357,6 +358,14 @@ class QuoraCrawler(object):
           print '[ERROR] Failed to save answer to file %s (%s)' % (filename, error.strerror)
 
         time.sleep(delay)
+
+  def save_answer(self, url, filename, save_as):
+    if save_as == self.SAVE_AS_HTML:
+      page_html = urllib2.urlopen(url).read()
+      with open(filename, 'wb') as f:
+        f.write(page_html)
+    elif save_as == self.SAVE_AS_PDF:
+      pdfkit.from_url(url, filename)
 
   def quit(self):
     self.driver.quit()
