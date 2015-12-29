@@ -163,23 +163,23 @@ class QuoraCrawler(object):
   def logout(self, prog=None, status=None):
     if 'Quora' not in self.driver.title:
       self.driver.get('https://www.quora.com/')
-      WebDriverWait(self.driver, 10).until(EC.title_contains('Quora'))
+      WebDriverWait(self.driver, 10)
 
     if QUORA_TITLE not in self.driver.title:
       self.driver.find_element_by_css_selector(
         "form[id$='_logout_form']").submit()
-      WebDriverWait(self.driver, 10).until(EC.title_contains(QUORA_TITLE))
+      WebDriverWait(self.driver, 10)
 
   def check_login(self, prog=None, status=None):
     if 'Quora' not in self.driver.title:
       self.driver.get('https://www.quora.com/')
-      WebDriverWait(self.driver, 10).until(EC.title_contains('Quora'))
-      print 'Quora is opened'
+      WebDriverWait(self.driver, 10)
+      print 'Quora is open'
     else:
-    return QUORA_TITLE not in self.driver.title
+      return QUORA_TITLE not in self.driver.title
 
   def get_user_name(self):
-    assert self.check_login()
+    # assert self.check_login()
     return self.driver.find_element_by_css_selector(
       PROFILE_IMG_SELECTOR).get_attribute('alt')
 
@@ -187,26 +187,26 @@ class QuoraCrawler(object):
     if self.check_login(prog, status):
       return
     # Make Sure we are on Login Page
-    assert QUORA_TITLE in self.driver.title
+    # assert QUORA_TITLE in self.driver.title
 
-    # We have to login with email and password
+    print 'We have to login with email and password'
     email_input = self.driver.find_element_by_css_selector(
       LOGIN_FORM_SELECTOR + ' input[type=text]')
     password_input = self.driver.find_element_by_css_selector(
       LOGIN_FORM_SELECTOR + ' input[type=password]')
 
-    assert email_input.is_displayed() and email_input.is_enabled()
-    assert password_input.is_displayed() and password_input.is_enabled()
+    # assert email_input.is_displayed() and email_input.is_enabled()
+    # assert password_input.is_displayed() and password_input.is_enabled()
 
+    print 'input login details'
     email_input.clear()
     password_input.clear()
     email_input.send_keys(email)
     password_input.send_keys(password + Keys.RETURN)
 
+    print 'wait for login'
+    WebDriverWait(self.driver, 10)
 
-    WebDriverWait(self.driver, 10).until(lambda driver:
-      EC.title_contains('Home - Quora')(driver) or len(
-        driver.find_elements_by_css_selector(ERROR_MSG_SELECTOR)) > 0)
 
 
     if 'Home - Quora' not in self.driver.title:
@@ -230,8 +230,8 @@ class QuoraCrawler(object):
     if CONTENT_TILE not in self.driver.title:
       # Navigate to Content Page
       self.driver.get(CONTENT_URL)
-      WebDriverWait(self.driver, 10).until(EC.title_contains(CONTENT_TILE))
-
+      WebDriverWait(self.driver, 10)
+    print 'Content page loaded'
 
     new_answer_exist = True
     new_answer_list = []
@@ -251,9 +251,10 @@ class QuoraCrawler(object):
       # Parsing the answers fetched
       elements = self.driver.find_elements_by_css_selector(
         CONTENT_PAGE_ITEM_SELECTOR);
+      print 'all answer elements found'
 
-      if prog and prog['value'] > 90 : prog['value'] = 40
       print 'Fetched ' + str(len(elements)) + ' answers'
+
 
       # Iterating over only new elements fetched in this cycle
       elements = elements[len(new_answer_list):]
@@ -278,6 +279,7 @@ class QuoraCrawler(object):
     # Writing the updated answer list to file
     self.answer_list = new_answer_list
     self.write_answer_file()
+    print 'answers file saved'
 
 
   def download_answers(self, directory='quora-answers',
@@ -293,6 +295,7 @@ class QuoraCrawler(object):
       if error.errno != errno.EEXIST:
         raise
 
+    print 'now saving the answers'
     os.chdir(directory)
     download_file_count = 0
     for idx, e in enumerate(self.answer_list):
@@ -320,6 +323,7 @@ class QuoraCrawler(object):
         try:
           self.save_answer(e[0], filename, save_as=SAVE_AS_HTML)
           download_file_count += 1
+          print 'answer '+ str(e[0]) + ' saved as ' + filename + '' + SAVE_AS_HTML
         except urllib2.URLError as error:
           print '[ERROR] Failed to download answer from URL %s (%s)' % (url, error.reason)
           continue
