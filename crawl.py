@@ -162,33 +162,20 @@ class QuoraCrawler(object):
 
   def logout(self, prog=None, status=None):
     if 'Quora' not in self.driver.title:
-      if prog: prog['value'] = 10
-      if status: status.set('Opening Quora')
       self.driver.get('https://www.quora.com/')
       WebDriverWait(self.driver, 10).until(EC.title_contains('Quora'))
-      if prog: prog['value'] = 90
-      if status: status.set('Opened Quora')
 
     if QUORA_TITLE not in self.driver.title:
-      if prog: prog['value'] = 10
-      if status: status.set('Logging Out')
       self.driver.find_element_by_css_selector(
         "form[id$='_logout_form']").submit()
       WebDriverWait(self.driver, 10).until(EC.title_contains(QUORA_TITLE))
-      if prog: prog['value'] = 90
-      if status: status.set('Log Out Successful')
 
   def check_login(self, prog=None, status=None):
-    if prog: prog['value'] = 10
     if 'Quora' not in self.driver.title:
-      if status: status.set('Opening Quora')
       self.driver.get('https://www.quora.com/')
       WebDriverWait(self.driver, 10).until(EC.title_contains('Quora'))
-      if status: status.set('Opened Quora')
-      if prog: prog['value'] = 100
+      print 'Quora is opened'
     else:
-      if status: status.set('Quora Already Open')
-      if prog: prog['value'] = 100
     return QUORA_TITLE not in self.driver.title
 
   def get_user_name(self):
@@ -216,23 +203,15 @@ class QuoraCrawler(object):
     email_input.send_keys(email)
     password_input.send_keys(password + Keys.RETURN)
 
-    if status: status.set('Waiting for Quora Response')
-    if prog: prog['value'] = 20
 
     WebDriverWait(self.driver, 10).until(lambda driver:
       EC.title_contains('Home - Quora')(driver) or len(
         driver.find_elements_by_css_selector(ERROR_MSG_SELECTOR)) > 0)
 
-    if status: status.set('Quora Response Received')
-    if prog: prog['value'] = 50
 
     if 'Home - Quora' not in self.driver.title:
-      if status: status.set('Invalid Credentials. Try Again')
-      if prog: prog['value'] = 100
       raise self.InvalidCredentialException('Invalid Login Credentials')
     else:
-      if status: status.set('Login Successful')
-      if prog: prog['value'] = 100
       print "Successfully Logged In"
 
   def scroll_page(self):
@@ -250,13 +229,9 @@ class QuoraCrawler(object):
   def update_answer_list(self, prog=None, status=None):
     if CONTENT_TILE not in self.driver.title:
       # Navigate to Content Page
-      if prog: prog['value'] = 10
-      if status: status.set('Fetching Content Page...')
       self.driver.get(CONTENT_URL)
       WebDriverWait(self.driver, 10).until(EC.title_contains(CONTENT_TILE))
 
-    if prog: prog['value'] = 0
-    if status: status.set('Parsing Content Page...')
 
     new_answer_exist = True
     new_answer_list = []
@@ -277,7 +252,6 @@ class QuoraCrawler(object):
       elements = self.driver.find_elements_by_css_selector(
         CONTENT_PAGE_ITEM_SELECTOR);
 
-      if status: status.set('Fetched ' + str(len(elements)) + ' answers')
       if prog and prog['value'] > 90 : prog['value'] = 40
       print 'Fetched ' + str(len(elements)) + ' answers'
 
@@ -301,14 +275,10 @@ class QuoraCrawler(object):
         print "No More Answers to fetch"
         new_answer_exist = False
 
-    if status: status.set('Writing Answer File')
-    if prog: prog['value'] = 85
     # Writing the updated answer list to file
     self.answer_list = new_answer_list
     self.write_answer_file()
 
-    if status: status.set('Answer List Updated')
-    if prog: prog['value'] = 95
 
   def download_answers(self, directory='quora-answers',
     update_answer=True, overwrite=False, delay=0):
