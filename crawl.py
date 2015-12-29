@@ -78,6 +78,7 @@ class QuoraCrawler(object):
 
   PHANTOMJS_DRIVER = 0
   CHROME_DRIVER = 1
+  FIREFOX_DRIVER = 2
   SAVE_AS_HTML= 0
   SAVE_AS_PDF= 1
 
@@ -112,6 +113,9 @@ class QuoraCrawler(object):
       co = webdriver.ChromeOptions()
       co.add_argument("--user-data-dir=" + user_dir)
       self.driver = webdriver.Chrome(chrome_options=co)
+    elif driver == self.FIREFOX_DRIVER:
+      self.driver = webdriver.Firefox()
+
 
     # Setting Driver Window Size - Known Hack for a Bug.
     self.driver.set_window_size(1120, 550)
@@ -197,11 +201,6 @@ class QuoraCrawler(object):
       return
     # Make Sure we are on Login Page
     assert QUORA_TITLE in self.driver.title
-
-    # First move to primary login form
-    login_link = self.driver.find_element_by_class_name('login_link')
-    if login_link.is_displayed() and login_link.is_enabled():
-      login_link.click()
 
     # We have to login with email and password
     email_input = self.driver.find_element_by_css_selector(
@@ -371,7 +370,7 @@ class QuoraCrawler(object):
     self.driver.quit()
 
 if __name__ == '__main__':
-  rc = QuoraCrawler(driver=QuoraCrawler.CHROME_DRIVER)
+  rc = QuoraCrawler(driver=QuoraCrawler.FIREFOX_DRIVER)
   rc.login(os.environ['QUORA_USERNAME'], os.environ['QUORA_PASSWORD'])
   answer_list = rc.download_answers()
   rc.quit()
